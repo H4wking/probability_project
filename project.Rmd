@@ -1,0 +1,59 @@
+---
+title: "project"
+output: html_document
+---
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(fitdistrplus)
+```
+
+```{r}
+songs <- read.csv("song_data.csv")
+head(songs)
+```
+
+```{r}
+pop <- songs$song_popularity
+hist(pop)
+```
+
+```{r}
+ggplot(data=songs, aes(x=songs$song_popularity)) +
+  geom_histogram(aes(y =..density.., fill=..count..),
+                 breaks=seq(0, 100, by=1))+
+                 labs(title="Histogram for songs popularity") +
+                 geom_density(col = "darkred", adjust = 2) +
+                 labs(x="score", y="count")
+```
+Skewed to left.
+```{r}
+descdist(pop)
+```
+Distribution of popularity is close to normal.
+```{r}
+fit.norm <- fitdist(pop, "norm")
+plot(fit.norm)
+```
+
+```{r}
+pop.sample <- sample_n(songs, 1000)$song_popularity
+shapiro.test(pop.sample)
+```
+
+```{r}
+N <- 500
+mu <- mean(pop)
+sd <- sd(pop)
+x <- rnorm(N, mean=mu, sd=sd)
+pts <- seq(-1,max(x),by=0.01)
+plot(ecdf(pop),col="darkgreen")
+lines(pts, pnorm(pts, mean=mu, sd=sd), col="red")
+
+max(pnorm(pts, mean=mu, sd=sd)-ecdf(pop)(pts))
+
+ks.test(pop, "pnorm", mu, sd)
+```
