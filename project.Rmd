@@ -9,10 +9,15 @@ library(dplyr)
 library(ggplot2)
 library(caret)
 library(fitdistrplus)
+library(ggpubr)
+library(reshape2)
+```
+```{r}
+set.seed(000)
 ```
 
 ```{r}
-songs <- read.csv("song_data.csv")
+songs <- distinct(read.csv("song_data.csv"))
 head(songs)
 ```
 
@@ -33,19 +38,22 @@ Skewed to left.
 ```{r}
 descdist(pop)
 ```
-Distribution of popularity is close to normal.
+We can see that distribution of popularity is close to normal and maybe logistic. It is also close to lognormal, gamma and Weibull distributions, but our data contains zeros, so we can't fit our data to them.
 ```{r}
-fit.norm <- fitdist(pop, "norm")
+fit.norm <- fitdist(pop.sample, "norm")
 plot(fit.norm)
-```
 
+fit.logis <- fitdist(pop.sample, "logis")
+plot(fit.logis)
+```
+Judging from the Q-Q plot, normal distribution fits better. But we are not really sure, so we will use Kolmogorov-Smirnov test.
 ```{r}
 pop.sample <- sample_n(songs, 1000)$song_popularity
 shapiro.test(pop.sample)
 ```
 
 ```{r}
-N <- 500
+N <- 1000
 mu <- mean(pop)
 sd <- sd(pop)
 x <- rnorm(N, mean=mu, sd=sd)
@@ -56,4 +64,63 @@ lines(pts, pnorm(pts, mean=mu, sd=sd), col="red")
 max(pnorm(pts, mean=mu, sd=sd)-ecdf(pop)(pts))
 
 ks.test(pop, "pnorm", mu, sd)
+```
+
+```{r}
+x <- rlogis(N, location=mu, scale=sd)
+pts <- seq(-1,max(x),by=0.01)
+plot(ecdf(pop),col="darkblue")
+lines(pts, plogis(pts, location=mu, scale=sd), col="red")
+
+max(plogis(pts, location=mu, scale=sd)-ecdf(pop)(pts))
+
+ks.test(pop, "plogis", mu, sd)
+```
+Visually normal distribution fits better and it seems that Kolmogorov-Smirnov test doesn't help us to determine which distribution fits our data better, but when we use it with different smaller samples (n=1000) test for normal distribution returns much better p-values, so we can say that closest fit is normal distribution.
+
+```{r}
+cor.test(pop, songs$energy)
+
+ggscatter(sample_n(songs, 1000), x = "danceability", y = "energy", size = 0.2,
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "energy", ylab = "popularity")
+```
+
+```{r}
+songs.data <- subset(songs, select = -c(song_name))
+cormat <- round(cor(songs.data), 3)
+head(cormat)
+
+melted_cormat <- melt(cormat)
+
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1)) +
+  scale_fill_gradient2(low = "dodgerblue4", high = "firebrick", mid = "white", 
+    midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation")
+```
+
+```{r}
+print(cormat[, "song_popularity"])
+```
+The result doesn't look promising.
+
+```{r}
+songs$is_popular <- songs$song_popularity > 50
+songs$is_popular <- as.factor(songs$is_popular)
+
+train <- songs[1:12000, ]
+test <- songs[12001:14926, ]
+
+model <- glm(is_popular ~ danceability + instrumentalness + liveness + loudness + audio_valence,
+             data = train, family=binomial(link='logit'))
+
+prediction <- predict.glm(model, newdata = test, type = 'response')
+prediction <- ifelse(prediction > 0.5,TRUE,FALSE)
+result <- data.frame(prediction)
+result$prediction <- as.factor(result$prediction)
+confusionMatrix(result$prediction, test$is_popular)
 ```
